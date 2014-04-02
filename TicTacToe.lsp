@@ -61,23 +61,25 @@
 ;gamenum +1 ("player2addr")---- This address store Player 2's Address
 ;gamenum +2 --------------- This address currently store a custom name for a game (can be set but isn't used here)
 ;gamenum +3 ("gamedataaddr")--- This address stores 3 pieces of data, [turn (1 bit)|winner (2 bits)|running? (1 bit)]
-;----------> turn    (1 bit)   - Indicates whose turn it is (0 for player 1, 1 for player 2). (Most significant bit)
-;----------> winner  (2 bits)  - Indicates the winner of the game. 0 = player 1, 1 = player 2, 2 = tie game.
-;----------> running (1 bit)   - Indicates if this game is running (1 = running) (Least significant bit)
-;gamenum +4 ("gamestateaddr") - This address stores the game state. 18 bits, each pair (0,1), (2,3)... indicates a location on the grid (higher num = more significant bit)
+;----------> turn    (1 hex digit)   - Indicates whose turn it is (1 for player 1, 2 for player 2). (Most significant bit)
+;----------> winner  (1 hex digit )  - Indicates the winner of the game. 1 = player 1, 2 = player 2, F = tie game.
+;----------> running (1 hex digit)   - Indicates if this game is running (1 = running) (Least significant bit)
+;            EXAMPLE: If it is player 2's turn and the game has not finished it will read 0x201
+;gamenum +4 ("gamestateaddr") - This address stores the game state. 10 hex digits, each digit 1-9 location corresponds to a location on the grid (The 10th digit is 0xF for ease of reading)
+;                              - the storage of locations is as 0xF 9/8/7/6/5/4/3/2/1 when read in hex
 ;
-;     -------------------------
-;     | [0,1] | [2,3] | [5,6] |
-;     -------------------------
-;     | [7,8] | [9,10]|[11,12]|
-;     -------------------------
-;     |[13,14]|[15,16]|[17,18]|
-;     -------------------------
+;    1 | 2 | 3
+;   -----------
+;    4 | 5 | 6
+;   -----------
+;    7 | 8 | 9
 ;
 ;The valid values in a grid are:
-;00 - Location is unclaimed
-;10 - Location is owned by player 1
-;11 - Location is owned by player 2
+;0 - Location is unclaimed
+;1 - Location is owned by player 1
+;2 - Location is owned by player 2
+;
+;EXAMPLE: If player 2 has locations 7,8,and 9, player 1 owns 1,3 and 5 the game state will read: 0xF222010101
 ;
 ;gamenum +5 ---------------- This is left empty to separate games
 ;
@@ -134,7 +136,7 @@
                     (when(>= (txdatan) 3) ;Player 2 chosen (Mostly for use if a Gui gets built on this)
                         (seq
                             (sstore (ADD (sload 0xfff) 1) (txdata 2)) ;Add player 2
-                            (sstore (ADD (sload 0xfff) 3) 1) ;Start the game Pl1 turn (0)/ winner 00/ running 1
+                            (sstore (ADD (sload 0xfff) 3) 0x101) ;Start the game Pl1 turn (0)/ winner 00/ running 1
                         )
                     )
                     (sstore 0xfff (ADD (sload 0xfff) 6)) ;sets the next game to the next chunk (6 so that each game will be separated)
@@ -163,7 +165,8 @@
                                     (= (mload "player2") 0)) ;player 2 not set
                                 (seq
                                     (sstore (mload "player2addr") (txsender)) ;Add the tx sender as player 2
-                                    (sstore (mload "gamedataaddr") 1) ;Start the game Pl1 turn (0)/ winner 00/ running 1
+                                    (sstore (mload "gamedataaddr") 0x101) ;Start the game Pl1 turn (0)/ winner 00/ running 1
+                                    (sstore (mload "gamestateaddr") 0xF000000000);Initialize the gameboard.
                                     (stop) ;stop because game has started now need to wait for player 1s first turn
                                 )
                             )
@@ -173,22 +176,23 @@
                                     (>= (txdatan) 3) ;Has at least 3 arguments "move"/game num/location
                                     (> (mload "gamebase") 0) ) ;makes sure the game exists
                                 (when (and (or (= (txsender) (mload "gamebase")) (= (txsender) (mload "player2"))) ;txsender a player?
-                                        (= (mod (mload "gamedata") 2) 1) ;Is it running?
+                                        (= (mod (mload "gamedata") 16) 1) ;Is it running?
                                         (> (txdata 2) 0) (< (txdata 2) 10)) ;Is the Location data valid?
                                     (seq
-                                        (when (= (txsender)(mload "player2")) ;If the txsender is player 2
-                                            (mstore "playernum" 1) ;player is player 2
+                                        (if (= (txsender)(mload "player1")) ;If the txsender is player 2
+                                            (mstore "playernum" 1) ;player is player 1
+                                            (mstore "playernum" 2) ;etc
                                         )
-                                        (mstore "turn" (mod (div (mload "gamedata") 8) 2)) ;store who's turn it is (the mod is unneeded right now)
-                                        (when (= (mload "turn") (mload "playernum"))) ;Is it txsender's turn?
+                                        (mstore "turn" (div (mload "gamedata") 0x100)) ;store who's turn it is (the mod is unneeded right now)
+                                        (when (= (mload "turn") (mload "playernum")) ;Is it txsender's turn?
                                             ;Time to make your move
                                             (seq
                                                 (mstore "count" 1) ;Set counter (I could have used a name)
                                                 (mstore "state" (mload "gamestate")) ;Copy the Game State into memory
                                                 (for (<= (mload "count") 9) ;Parse gamestate
                                                     (seq
-                                                        (mstore (mload "count") (MOD (mload "state") 4)) ;copy two lowest bits out of gamestate
-                                                        (mstore "state" (DIV (mload "state") 4)) ;delete two lowest bits from gamestate
+                                                        (mstore (mload "count") (MOD (mload "state") 16)) ;copy four lowest bits out of gamestate (one hex slot)
+                                                        (mstore "state" (DIV (mload "state") 16)) ;delete four lowest bits from gamestate
                                                         (mstore "count" (ADD (mload "count") 1)) ;Increment counter
                                                     )
                                                 )
@@ -196,16 +200,16 @@
                                                     ;Modify the gamestate in storage to add this move.
                                                     (seq
                                                         ;DOING IT THE FUCKIN LONG WAY CAUSE EXP DOESN'T WORK
-                                                        (mstore (txdata 2) (ADD 2 (mload "playernum")))
+                                                        (mstore (txdata 2) (mload "playernum"))
                                                         (mstore "count" 9) ;Set counter
                                                         (mstore "constate" 0) ;Constructing the game state here
                                                         (for (>= (mload "count") 1) ;Build gamestate
                                                             (seq
-                                                                (mstore "constate" (ADD (MUL 4 (mload "constate")) (mload (mload "count"))))
+                                                                (mstore "constate" (ADD (MUL 16 (mload "constate")) (mload (mload "count"))))
                                                                 (mstore "count" (SUB (mload "count") 1)) ;Decrement counter
                                                             )
                                                         )
-                                                        (sstore (mload "gamestateaddr") (mload "constate"))
+                                                        (sstore (mload "gamestateaddr") (ADD 0xF000000000(mload "constate")))
                                                     )
                                                     ;ELSE if not free stop player needs to make a different move
                                                     (seq
@@ -217,62 +221,62 @@
                                                 ;This could be optimized but it would only save you something if the game wasn't a tie (not worth it)
                                                 (when (and (= (mload 1)(mload 2)) (= (mload 2)(mload 3)) (> (mload 1) 0)) ;123 (copy for the others)
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 1)(mload 4)) (= (mload 4)(mload 7)) (> (mload 1) 0)) ;147
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 1)(mload 5)) (= (mload 5)(mload 9)) (> (mload 1) 0)) ;159
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 2)(mload 5)) (= (mload 5)(mload 8)) (> (mload 2) 0)) ;258
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 3)(mload 6)) (= (mload 6)(mload 9)) (> (mload 3) 0)) ;369
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 3)(mload 5)) (= (mload 5)(mload 7)) (> (mload 3) 0)) ;357
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 4)(mload 5)) (= (mload 5)(mload 6)) (> (mload 4) 0)) ;456
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
                                                 (when (and (= (mload 7)(mload 8)) (= (mload 8)(mload 9)) (> (mload 7) 0)) ;789
                                                     (seq
-                                                        (sstore (mload "gamedataaddr") (* 2 (mload "playernum")));set the game data to report game not running and who won (turn=0)
+                                                        (sstore (mload "gamedataaddr") (* 16 (mload "playernum")));set the game data to report game not running and who won (turn=0)
                                                         (mstore "winner" (mload "playernum")) ;store the winner
                                                     )
                                                 )
-                                                (when (= (ADD (ADD (ADD (ADD (mload 1)(mload 2)) (ADD(mload 3)(mload 4)))(ADD (ADD (mload 5)(mload 6)) (ADD (mload 7)(mload 8))))(mload 9)) 22) ;Tie
+                                                (when (= (ADD (ADD (ADD (ADD (mload 1)(mload 2)) (ADD(mload 3)(mload 4)))(ADD (ADD (mload 5)(mload 6)) (ADD (mload 7)(mload 8))))(mload 9)) 0xD0) ;Tie
                                                     (seq
                                                     ;On Tie games winner will be 2 (code will be 0|10|0 => turn 0 | tie game |not running) 
-                                                        (sstore (mload "gamedataaddr")  4)
+                                                        (sstore (mload "gamedataaddr")  0xF0)
                                                         (mstore "winner" 2) ;store the tie (2)
                                                     )
                                                 )
                                                 ;#################################################################################################################################
                                                 ;END OF GAME LOGIC
-                                                (if (= (mod (sload (mload "gamedataaddr")) 2) 0) ;game is no longer running
+                                                (if (= (mod (sload (mload "gamedataaddr")) 16) 0) ;game is no longer running
                                                     (when (> (sload 0xffd) 0) ;scoreboard linked
                                                         (seq
                                                             (when (and (= (mload "winner") 2) ) ;Tied game(Placed first because most likely)
@@ -298,13 +302,13 @@
                                                     (seq ;ELSE if the game hasn't finished change who's turn it is.
                                                         (when (mload "turn")
                                                             (seq
-                                                                (sstore (mload "gamedataaddr") 1) ;running+turn 0=1
+                                                                (sstore (mload "gamedataaddr") 0x101) ; Hex
                                                                 (stop) ;stop because turn over
                                                             )
                                                         )
                                                         (unless (mload "turn")
                                                             (seq
-                                                                (sstore (mload "gamedataaddr") 9) ;running+turn 1=9
+                                                                (sstore (mload "gamedataaddr") 0x201) ; Hex yo!
                                                                 (stop) ;stop because turn over
                                                             )
                                                         )

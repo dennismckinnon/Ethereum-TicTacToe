@@ -8,7 +8,7 @@
 
 ;Contract stores a record of scores in a users slot corresponding to their address. (passed along with winning data)
 ;
-;the sums are stored in 16^0, 16^3, and 16^6 (this makes for easy reading in hex (ethereum data) and easy for a machine to parse (mod 16^3/ div 16^3) this allows counts up to 4096 in wins and loses (ties can of course go much much higher)
+;the sums are stored in 16^0, 16^3, and 16^6 (this makes for easy reading in hex (ethereum storage data) and easy for a machine to parse (mod 16^3/ div 16^3) this allows counts up to 4096 in wins and loses (ties can of course go much much higher)
 ;
 ;Contract Flow (Use)
 ;The Txsender of first transaction received is set as Admin
@@ -52,13 +52,33 @@
                 (seq
                     (if (= (txdata 2) 0) ;Not tie
                         (seq
-                            (when(>(txdata 0) 0xfff) (sstore (txdata 0)(+ (sload(txdata 0)) 1))) ;data 1 Player won
-                            (when(>(txdata 1) 0xfff) (sstore (txdata 1)(+ (sload(txdata 1)) 4096))) ;data 2 Player lost
+                            (when(>(txdata 0) 0xfff);data 1 Player 
+                                (seq
+                                    (when (= (sload (txdata 0)) 0) (sstore (txdata 0) 0xF000000000)) ;Formatting
+                                    (sstore (txdata 0)(+ (sload(txdata 0)) 0x1))
+                                )
+                            ) 
+                            (when(>(txdata 1) 0xfff)
+                                (seq
+                                    (when (= (sload (txdata 0)) 0) (sstore (txdata 0) 0xF000000000)) ;Formatting
+                                    (sstore (txdata 1)(+ (sload(txdata 1)) 0x1000)) ;data 2 Player lost
+                                )
+                            )
                             (stop)
                         )
                         (seq ; Else it was a tie
-                            (sstore (txdata 0)(+ (sload(txdata 0)) 16777216)) ;player 1 increase tie count
-                            (sstore (txdata 1)(+ (sload(txdata 1)) 16777216)) ;player 2 increase tie count
+                            (when(>(txdata 0) 0xfff);data 1 Player 
+                                (seq
+                                    (when (= (sload (txdata 0)) 0) (sstore (txdata 0) 0xF000000000)) ;Formatting
+                                    (sstore (txdata 0)(+ (sload(txdata 0)) 0x1000000))
+                                )
+                            ) 
+                            (when(>(txdata 1) 0xfff)
+                                (seq
+                                    (when (= (sload (txdata 0)) 0) (sstore (txdata 0) 0xF000000000)) ;Formatting
+                                    (sstore (txdata 1)(+ (sload(txdata 1)) 0x1000000)) ;data 2 Player lost
+                                )
+                            )
                             (stop)
                         )
                     )
