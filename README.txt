@@ -19,7 +19,7 @@ It does not have any protection against spam because why?
 
 Its written in LLL for ethereum.
 =============================================================================
-HOW TO USE/PLAY (BASIC)
+HOW TO USE/PLAY
 In order to get it up and running and play follow these instructions. Both files have more detailed information in them. And they CAN be used on thier own (Scoreboard isn't tied to tictactoe) Also each file has various "Admin" operations. The first person to send a transaction to either contract is remembered and becomes admin which allows you certain commands which only you can send (such as suicide and suicide plus others). 
 
 Assuming you have the POC 3:
