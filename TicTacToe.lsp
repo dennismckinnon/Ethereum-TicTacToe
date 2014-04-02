@@ -271,7 +271,7 @@
                                                     (seq
                                                     ;On Tie games winner will be 2 (code will be 0|10|0 => turn 0 | tie game |not running) 
                                                         (sstore (mload "gamedataaddr")  0xF0)
-                                                        (mstore "winner" 2) ;store the tie (2)
+                                                        (mstore "winner" 3) ;store the tie (2)
                                                     )
                                                 )
                                                 ;#################################################################################################################################
@@ -279,7 +279,7 @@
                                                 (if (= (mod (sload (mload "gamedataaddr")) 16) 0) ;game is no longer running
                                                     (when (> (sload 0xffd) 0) ;scoreboard linked
                                                         (seq
-                                                            (when (and (= (mload "winner") 2) ) ;Tied game(Placed first because most likely)
+                                                            (when (and (= (mload "winner") 3) ) ;Tied game(Placed first because most likely)
                                                                 (seq
                                                                     (mktx (sload 0xffd) 0 3 (mload "gamebase") (mload "player2") 1)
                                                                     (stop) ;Result registered game over
