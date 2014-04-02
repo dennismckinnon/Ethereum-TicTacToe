@@ -285,13 +285,13 @@
                                                                     (stop) ;Result registered game over
                                                                 )
                                                             )
-                                                            (when (= (mload "winner") 0) ;Player 1 won 
+                                                            (when (= (mload "winner") 1) ;Player 1 won 
                                                                 (seq
                                                                     (mktx (sload 0xffd) 0 3 (mload "gamebase") (mload "player2") 0)
                                                                     (stop) ;Result registered game over
                                                                 )
                                                             )
-                                                            (when (= (mload "winner") 1) ;Player 2 won
+                                                            (when (= (mload "winner") 2) ;Player 2 won
                                                                 (seq
                                                                     (mktx (sload 0xffd) 0 3 (mload "player2") (mload "gamebase") 0)
                                                                     (stop) ;Result registered game over
